@@ -1,0 +1,4 @@
+◇ injected env (12) from ..\.env // tip: ⌘ override existing { override: true }
+✅ MySQL (Qiral) connected
+🚀 Qiral server running on http://localhost:7695
+📡 API available at http://localhost:7695/api/v1
