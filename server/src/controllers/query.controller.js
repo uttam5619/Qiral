@@ -38,12 +38,12 @@ export async function userQueryHandler(req, res) {
         // misidentifies valid DB queries as NONE
         try {
           const { entities, schemaContext } = await getSchemaContextService(
-            userQuery,
+            step.query,
             orgId,
             dbName
           );
-          const generatedSQL = await generateSQLService(userQuery, schemaContext, orgId, dbName);
-          const validation = await validateSQLService(userQuery, generatedSQL, orgId, dbName);
+          const generatedSQL = await generateSQLService(step.query, schemaContext, orgId, dbName);
+          const validation = await validateSQLService(step.query, generatedSQL, orgId, dbName);
           if (validation.valid) {
             const execResult = await executeSQLQueryService(generatedSQL, orgId, dbName);
             results.push({
@@ -69,13 +69,13 @@ export async function userQueryHandler(req, res) {
       if (step.type === "DDL") {
         try {
           const { entities, schemaContext } = await getSchemaContextService(
-            userQuery,
+            step.query,
             orgId,
             dbName
           );
 
           const generatedSQL = await generateSQLService(
-            userQuery,
+            step.query,
             schemaContext,
             orgId,
             dbName
@@ -110,14 +110,14 @@ export async function userQueryHandler(req, res) {
       try {
         // Step 2: Get schema context
         const { entities, schemaContext } = await getSchemaContextService(
-          userQuery,
+          step.query,
           orgId,
           dbName
         );
 
         // Step 3: Generate SQL
         const generatedSQL = await generateSQLService(
-          userQuery,
+          step.query,
           schemaContext,
           orgId,
           dbName
@@ -126,7 +126,7 @@ export async function userQueryHandler(req, res) {
 
         // Step 4: Validate SQL
         const validation = await validateSQLService(
-          userQuery,
+          step.query,
           generatedSQL,
           orgId,
           dbName

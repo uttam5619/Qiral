@@ -6,10 +6,13 @@ const EXAMPLE_QUERIES = [
   'List all tables in the system',
   'How many columns does each table have?',
   'Show all foreign key relationships',
+  'Create a table named products with id, name, and price',
+  'Create a table named orders with id, product_id, and quantity with a foreign key to products',
+  'Insert 3 sample products into products table',
+  'Insert 2 orders into the orders table',
+  'Fetch all orders joined with products to show product name and quantity',
   'Show the top 5 tables with the most columns',
   'Find all primary key columns across all tables',
-  'Count the number of indexes per table',
-  'Show tables with more columns than average',
 ];
 
 function ResultTable({ rows }) {
@@ -66,23 +69,30 @@ export default function QueryPage() {
     setResult(null);
     try {
       const res = await queryApi.run(selectedDb, query);
-      const r   = res.data.results?.[0];
-      setResult(r);
-      setHistory(h => [{ query, db: selectedDb, result: r, ts: new Date() }, ...h.slice(0, 19)]);
+      const allResults = res.data.results || [];
+      // Store all results; UI will iterate them
+      setResult({ allResults, classification: res.data.classification });
+      setHistory(h => [{ query, db: selectedDb, result: allResults[allResults.length - 1], ts: new Date() }, ...h.slice(0, 19)]);
     } catch (err) {
-      setResult({ success: false, error: err.response?.data?.message || 'Request failed' });
+      setResult({ allResults: [], error: err.response?.data?.message || 'Request failed' });
     } finally {
       setLoading(false);
     }
   };
 
-  const tryFix = async () => {
-    if ((!result?.error && !result?.validationErrors) || !result?.generatedSQL) return;
+  const tryFix = async (stepResult) => {
+    if ((!stepResult?.error && !stepResult?.validationErrors) || !stepResult?.generatedSQL) return;
     setLoading(true);
     try {
-      const errorMsg = result.error || (Array.isArray(result.validationErrors) ? result.validationErrors.join(', ') : result.validationErrors);
-      const res = await queryApi.fix(selectedDb, query, result.generatedSQL, errorMsg);
-      setResult(p => ({ ...p, fixedSQL: res.data.fixedSQL }));
+      const errorMsg = stepResult.error || (Array.isArray(stepResult.validationErrors) ? stepResult.validationErrors.join(', ') : stepResult.validationErrors);
+      const res = await queryApi.fix(selectedDb, query, stepResult.generatedSQL, errorMsg);
+      // Update that specific step result with the fixedSQL
+      setResult(prev => ({
+        ...prev,
+        allResults: prev.allResults.map(r =>
+          r === stepResult ? { ...r, fixedSQL: res.data.fixedSQL } : r
+        ),
+      }));
     } catch (err) {
       alert('Fix failed: ' + (err.response?.data?.message || err.message));
     } finally {
@@ -142,48 +152,79 @@ export default function QueryPage() {
             </div>
           </form>
 
-          {/* Result */}
+          {/* Result — show ALL steps */}
           {result && (
-            <div className="glass flex-1 overflow-hidden flex flex-col fade-up">
-              <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <span className={`inline-flex items-center gap-1.5 text-sm font-semibold ${result.success ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {result.success ? '✅ Success' : '❌ Failed'}
-                  </span>
-                  {result.success && <span className="text-xs text-gray-500">{result.rowCount} rows</span>}
-                </div>
-                {result.type && <span className="text-xs text-gray-500 font-mono">{result.type}</span>}
-              </div>
-
-              {result.generatedSQL && (
-                <div className="px-5 py-3 border-b border-white/5 flex-shrink-0">
-                  <p className="text-xs text-gray-500 font-medium mb-1.5">Generated SQL</p>
-                  <div className="sql-block">{result.generatedSQL}</div>
+            <div className="flex flex-col gap-4 fade-up overflow-y-auto flex-1">
+              {/* Top-level error (network / 500) */}
+              {result.error && (
+                <div className="glass p-5 border border-red-500/20">
+                  <p className="text-red-400 text-sm">{result.error}</p>
                 </div>
               )}
 
-              {result.fixedSQL && (
-                <div className="px-5 py-3 border-b border-white/5 flex-shrink-0">
-                  <p className="text-xs text-gray-500 font-medium mb-1.5">Fixed SQL</p>
-                  <div className="sql-block text-yellow-300">{result.fixedSQL}</div>
-                </div>
-              )}
+              {(result.allResults || []).map((r, idx) => (
+                <div key={idx} className="glass flex-shrink-0 overflow-hidden">
+                  <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className={`inline-flex items-center gap-1.5 text-sm font-semibold ${
+                        r.success ? 'text-emerald-400' : 'text-red-400'
+                      }`}>
+                        {r.success ? '✅ Success' : '❌ Failed'}
+                      </span>
+                      {r.success && typeof r.rowCount === 'number' && (
+                        <span className="text-xs text-gray-500">{r.rowCount} row{r.rowCount !== 1 ? 's' : ''}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {r.type && <span className="text-xs text-indigo-400 font-mono font-semibold">{r.type}</span>}
+                      {!r.success && r.generatedSQL && (
+                        <button type="button" onClick={() => tryFix(r)} disabled={loading}
+                          className="btn-secondary text-xs py-1 px-2">
+                          🔧 Fix
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
-              {(result.error || result.validationErrors) && (
-                <div className="px-5 py-3 flex-shrink-0">
-                  <p className="text-xs text-red-400">
-                    {result.validationErrors
-                      ? (Array.isArray(result.validationErrors) ? result.validationErrors.join(', ') : result.validationErrors)
-                      : (Array.isArray(result.error) ? result.error.join(', ') : result.error)}
-                  </p>
-                </div>
-              )}
+                  {r.generatedSQL && (
+                    <div className="px-5 py-3 border-b border-white/5">
+                      <p className="text-xs text-gray-500 font-medium mb-1.5">Generated SQL</p>
+                      <div className="sql-block">{r.generatedSQL}</div>
+                    </div>
+                  )}
 
-              {result.success && (
-                <div className="flex-1 overflow-auto">
-                  <ResultTable rows={result.data} />
+                  {r.fixedSQL && (
+                    <div className="px-5 py-3 border-b border-white/5">
+                      <p className="text-xs text-gray-500 font-medium mb-1.5">Fixed SQL</p>
+                      <div className="sql-block text-yellow-300">{r.fixedSQL}</div>
+                    </div>
+                  )}
+
+                  {(r.error || r.validationErrors) && (
+                    <div className="px-5 py-3">
+                      <p className="text-xs text-red-400">
+                        {r.validationErrors
+                          ? (Array.isArray(r.validationErrors) ? r.validationErrors.join(', ') : r.validationErrors)
+                          : (Array.isArray(r.error) ? r.error.join(', ') : r.error)}
+                      </p>
+                    </div>
+                  )}
+
+                  {r.success && Array.isArray(r.data) && r.data.length > 0 && (
+                    <div className="overflow-auto max-h-64">
+                      <ResultTable rows={r.data} />
+                    </div>
+                  )}
+
+                  {r.success && Array.isArray(r.data) && r.data.length === 0 && r.type !== 'DDL' && (
+                    <div className="px-5 py-3 text-xs text-gray-500">Query executed. No rows returned.</div>
+                  )}
+
+                  {r.success && r.type === 'DDL' && (
+                    <div className="px-5 py-3 text-xs text-emerald-500">Schema change applied and metadata synced ✓</div>
+                  )}
                 </div>
-              )}
+              ))}
             </div>
           )}
         </div>

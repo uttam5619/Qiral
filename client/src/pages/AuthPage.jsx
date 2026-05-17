@@ -99,11 +99,11 @@ export default function AuthPage() {
             {tab === TAB.BOOTSTRAP && (<>
               <div>
                 <label className="text-xs text-gray-400 font-medium mb-1.5 block">Organization Name</label>
-                <input className="input" placeholder="Acme Corp" value={form.orgName} onChange={set('orgName')} required />
+                <input className="input" placeholder="Tata Consultancy Services" value={form.orgName} onChange={set('orgName')} required />
               </div>
               <div>
                 <label className="text-xs text-gray-400 font-medium mb-1.5 block">Slug (lowercase, hyphens)</label>
-                <input className="input" placeholder="acme-corp" value={form.orgSlug} onChange={set('orgSlug')} required />
+                <input className="input" placeholder="tata-consultancy" value={form.orgSlug} onChange={set('orgSlug')} required />
               </div>
             </>)}
 
@@ -111,21 +111,21 @@ export default function AuthPage() {
             {(tab === TAB.REGISTER || tab === TAB.BOOTSTRAP) && (
               <div>
                 <label className="text-xs text-gray-400 font-medium mb-1.5 block">Full Name</label>
-                <input className="input" placeholder="Jane Doe" value={form.fullName} onChange={set('fullName')} required />
+                <input className="input" placeholder="Priya Sharma" value={form.fullName} onChange={set('fullName')} required />
               </div>
             )}
 
             {/* Email — always */}
             <div>
               <label className="text-xs text-gray-400 font-medium mb-1.5 block">Email</label>
-              <input className="input" type="email" placeholder="you@company.com" value={form.email} onChange={set('email')} required />
+              <input className="input" type="email" placeholder="priya.sharma@tataconsultancy.com" value={form.email} onChange={set('email')} required />
             </div>
 
             {/* Password — not on forgot */}
             {tab !== TAB.FORGOT && (
               <div>
                 <label className="text-xs text-gray-400 font-medium mb-1.5 block">Password</label>
-                <input className="input" type="password" placeholder="Min 8 chars, 1 upper, 1 digit" value={form.password} onChange={set('password')} required />
+                <input className="input" type="password" placeholder="Min 8 chars, 1 uppercase, 1 number" value={form.password} onChange={set('password')} required />
               </div>
             )}
 
@@ -133,7 +133,7 @@ export default function AuthPage() {
             {tab === TAB.REGISTER && (<>
               <div>
                 <label className="text-xs text-gray-400 font-medium mb-1.5 block">Organization ID</label>
-                <input className="input" type="number" placeholder="10001" value={form.orgId} onChange={set('orgId')} required />
+                <input className="input" type="number" placeholder="e.g. 10001" value={form.orgId} onChange={set('orgId')} required />
               </div>
               <div>
                 <label className="text-xs text-gray-400 font-medium mb-1.5 block">Role</label>

@@ -86,17 +86,55 @@ export async function validateSQLService(userQuery, generatedSQL, orgId, dbName)
     }
   }
 
-  // 2. Validate that referenced tables belong to the organization
+  // 2. Validate that referenced tables belong to the organization.
+  // We use Qiral metadata as the primary source, and fall back to
+  // INFORMATION_SCHEMA on the tenant DB to handle tables that were
+  // just created in the same multi-step request (metadata not yet synced).
   const knownTables = await getTableNamesByOrg(orgId, dbName);
-  const knownTablesUpper = knownTables.map((t) => t.toUpperCase());
+  const knownTablesUpper = new Set(knownTables.map((t) => t.toUpperCase()));
+
+  // Lazily fetch live tables from the tenant DB if needed
+  let liveTables = null;
+  async function getLiveTables() {
+    if (liveTables !== null) return liveTables;
+    try {
+      const dbRecord = await findDatabase(dbName, orgId);
+      if (!dbRecord) return (liveTables = new Set());
+      const tenantConn = new Sequelize({
+        database: dbRecord.db_name,
+        username: dbRecord.db_username,
+        password: dbRecord.db_password,
+        host: dbRecord.host || '127.0.0.1',
+        port: dbRecord.port || 3306,
+        dialect: (dbRecord.db_type || 'mysql').toLowerCase(),
+        logging: false,
+      });
+      try {
+        const [rows] = await tenantConn.query(
+          `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ?`,
+          { replacements: [dbRecord.db_name] }
+        );
+        liveTables = new Set(rows.map((r) => r.TABLE_NAME.toUpperCase()));
+      } finally {
+        await tenantConn.close();
+      }
+    } catch {
+      liveTables = new Set();
+    }
+    return liveTables;
+  }
 
   // Simple table reference extraction from FROM and JOIN clauses
   const tableRefRegex = /(?:FROM|JOIN)\s+`?(\w+)`?/gi;
   let match;
   while ((match = tableRefRegex.exec(generatedSQL)) !== null) {
     const refTable = match[1].toUpperCase();
-    if (!knownTablesUpper.includes(refTable)) {
-      errors.push(`Hallucinated table reference: ${match[1]}`);
+    if (!knownTablesUpper.has(refTable)) {
+      // Fallback: check the live tenant DB before flagging as hallucinated
+      const live = await getLiveTables();
+      if (!live.has(refTable)) {
+        errors.push(`Hallucinated table reference: ${match[1]}`);
+      }
     }
   }
 
@@ -132,7 +170,25 @@ export async function executeSQLQueryService(sql, orgId, dbName) {
   try {
     await tenantConn.authenticate();
     const [results, metadata] = await tenantConn.query(sql);
-    return { results, rowCount: results.length };
+
+    // When multipleStatements:true, Sequelize returns an array-of-arrays:
+    // [ [result_of_stmt1], [result_of_stmt2], ... ]
+    // We want the last non-empty row-set (i.e. the SELECT result at the end),
+    // or fall back to the raw results if it's a single statement.
+    if (Array.isArray(results) && results.length > 0 && Array.isArray(results[0])) {
+      // Multi-statement path — find the last array that looks like rows
+      let lastRows = [];
+      for (const r of results) {
+        if (Array.isArray(r) && r.length > 0 && typeof r[0] === 'object' && !Array.isArray(r[0])) {
+          lastRows = r;
+        }
+      }
+      return { results: lastRows, rowCount: lastRows.length };
+    }
+
+    // Single-statement path
+    const rows = Array.isArray(results) ? results : [];
+    return { results: rows, rowCount: rows.length };
   } catch (err) {
     throw new Error(`SQL execution failed: ${err.message}`);
   } finally {
